@@ -1,4 +1,4 @@
-#include "taskManager/TaskManager.h"
+#include "dcr_TaskManager.h"
 
 #include <algorithm>
 
@@ -12,9 +12,9 @@
 #include <esp_task_wdt.h>
 #endif
 
-#include <taskManager/FreeRtosRaii.h>
-#include <taskManager/MutexRegistry.h>
-#include <logger/Logger.h>
+#include <dcr_taskManager/FreeRtosRaii.h>
+#include <dcr_taskManager/MutexRegistry.h>
+#include <dcr_Logger.h>
 
 #undef LOG_TAG
 #define LOG_TAG "TASKMGR"
