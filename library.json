@@ -1,6 +1,7 @@
 {
   "name": "dcr_task_manager",
   "version": "1.0.0",
+  "license": "AGPL-3.0",
   "description": "ESP32 FreeRTOS task lifecycle, sampling, RAII mutex helpers, and mutex registry.",
   "keywords": "esp32, arduino, freertos, task, watchdog, mutex, raii",
   "frameworks": "arduino",
