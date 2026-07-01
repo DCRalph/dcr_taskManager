@@ -28,6 +28,10 @@ public:
   void registerTask(TaskHandle_t handle, const char *name, uint32_t stackSize,
                     UBaseType_t priority, BaseType_t core);
   void noteHeartbeat(TaskHandle_t handle = nullptr);
+  // Remove a task's registry record. Self-deleting tasks MUST call this before
+  // vTaskDelete() — otherwise their handle dangles in the registry and
+  // snapshotTasks() later queries a freed/recycled TCB. Defaults to the caller.
+  void unregisterTask(TaskHandle_t handle = nullptr);
 
   float getIdlePercent(int core) const;
   float getCpuUsagePercent(int core = -1) const;

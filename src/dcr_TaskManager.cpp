@@ -39,6 +39,14 @@ namespace
     return m;
   }
 
+  // Serializes refreshIdleEstimates() so concurrent const getters don't both
+  // run the read-modify-write on the idle sample state.
+  FreeRtosRaii::Mutex &idleStatsMutex()
+  {
+    static FreeRtosRaii::Mutex m;
+    return m;
+  }
+
   // Idle hooks run from FreeRTOS built-in idle tasks. Returning true limits callbacks to once per tick.
   volatile uint32_t gIdleTickSamples[portNUM_PROCESSORS] = {0};
 
@@ -52,6 +60,19 @@ namespace
   void refreshIdleEstimates()
   {
     const uint32_t ms = millis();
+    if (ms - gPrevSampleMs < kIdleRefreshMs)
+      return;
+
+    // getIdlePercent()/getCpuUsagePercent() are const and called from several
+    // tasks, so two callers can reach here in the same window. Without
+    // serialization each runs the read-modify-write on gPrevIdleSamples /
+    // gPrevSampleMs and the second sees a ~zero delta, reporting a bogus CPU%.
+    // Let one task own the window; the others keep the last values (aligned
+    // reads are atomic on Xtensa, so a stale read is harmless).
+    auto lock = FreeRtosRaii::tryLock(idleStatsMutex(), 0);
+    if (!lock)
+      return;
+
     const uint32_t dt = ms - gPrevSampleMs;
     if (dt < kIdleRefreshMs)
       return;
@@ -189,6 +210,20 @@ void TaskManager::noteHeartbeat(TaskHandle_t handle)
     it->lastHeartbeatMs = millis();
 }
 
+void TaskManager::unregisterTask(TaskHandle_t handle)
+{
+  TaskHandle_t target = handle != nullptr ? handle : xTaskGetCurrentTaskHandle();
+  if (target == nullptr)
+    return;
+
+  std::lock_guard<FreeRtosRaii::Mutex> lock(taskRegistryMutex());
+  gTaskRecords.erase(
+      std::remove_if(gTaskRecords.begin(), gTaskRecords.end(),
+                     [target](const TaskRecord &record)
+                     { return record.handle == target; }),
+      gTaskRecords.end());
+}
+
 float TaskManager::getIdlePercent(int core) const
 {
   refreshIdleEstimates();
@@ -218,6 +253,13 @@ std::vector<TaskSnapshot> TaskManager::snapshotTasks() const
   for (const TaskRecord &record : gTaskRecords)
   {
     if (record.handle == nullptr)
+      continue;
+
+    // A task that self-deleted without unregistering leaves a stale handle
+    // here; querying a deleted or recycled TCB returns garbage or faults. Skip
+    // any handle the kernel no longer reports as live.
+    const eTaskState state = eTaskGetState(record.handle);
+    if (state == eDeleted || state == eInvalid)
       continue;
 
     TaskSnapshot snapshot;
